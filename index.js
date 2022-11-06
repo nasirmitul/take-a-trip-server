@@ -1,6 +1,7 @@
 //imports --------------------
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 const app = express();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
@@ -16,37 +17,72 @@ app.use(express.json());
 const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@cluster0.dxgxsmu.mongodb.net/?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
 
+
+
+function verifyJWT(req, res, next) {
+    const authHeader = req.headers.authorization
+    console.log(authHeader);
+
+    if (!authHeader) {
+        return res.status(401).send({ message: 'Unauthorized access' })
+    }
+    const token = authHeader.split(' ')[1];
+
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, decoded) {
+        if (err) {
+            res.status(401).send({ message: 'Unauthorized access' })
+        }
+        req.decoded = decoded;
+        next();
+    })
+
+}
+
+
 async function run() {
     try {
-        const upcomingToursData = client.db('TakeATrip').collection('upcomingTours');
+        const upcomingToursCollection = client.db('TakeATrip').collection('upcomingTours');
         const createdAgencyData = client.db('TakeATrip').collection('createdAgency');
 
-        //upcoming tour api
+
+        //upcoming tour api for all upcoming data
         app.get('/upcomingTours', async (req, res) => {
             const query = {}
-            const cursor = upcomingToursData.find(query);
-            const upcomingTours = await cursor.toArray();
-            res.send(upcomingTours);
+            const cursor = upcomingToursCollection.find(query);
+            const upComingTourData = await cursor.toArray();
+            const count = await upcomingToursCollection.estimatedDocumentCount();
+            res.send({ count, upComingTourData });
         })
 
+        app.post('/upcomingTours', async (req, res) => {
+            const upcomingTour = req.body;
+            const result = await upcomingToursCollection.insertOne(upcomingTour);
+            res.send(result);
+        });
+
+        //upcoming tour api for single upcoming tour data selected by the user
         app.get('/upcomingTours/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: ObjectId(id) };
-
-            const upcomingTour = await upcomingToursData.findOne(query);
+            const upcomingTour = await upcomingToursCollection.findOne(query);
             res.send(upcomingTour)
         });
 
 
         //Created Agency Api
-        app.get('/createAgency', async (req, res) => {
+        app.get('/createAgency', verifyJWT, async (req, res) => {
+            const decoded = req.decoded;
+            console.log('inside create agency api', decoded);
+
+            if (decoded.email !== req.query.agencyEmail) {
+                res.status(403).send({ message: 'Forbidden access' })
+            }
             let query = {};
             if (req.query.agencyEmail) {
                 query = {
                     agencyEmail: req.query.agencyEmail
                 }
             }
-            console.log(req.query.agencyEmail);
             const cursor = createdAgencyData.find(query);
             const createdAgency = await cursor.toArray();
             res.send(createdAgency);
@@ -64,15 +100,22 @@ async function run() {
             const result = await createdAgencyData.deleteOne(query);
             res.send(result);
         })
-
-
-
     }
 
     finally {
 
     }
 }
+
+// JWT Token --------------------
+app.post('/jwt', (req, res) => {
+    const user = req.body;
+    console.log(user);
+    const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '2d' })
+    res.send({ token })
+
+})
+
 
 run().catch((error) => console.log(error))
 
