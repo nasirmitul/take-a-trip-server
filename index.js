@@ -19,7 +19,7 @@ const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology:
 
 
 
-function verifyJWT(req, res, next) {
+/* function verifyJWT(req, res, next) {
     const authHeader = req.headers.authorization
     console.log(authHeader);
 
@@ -36,7 +36,7 @@ function verifyJWT(req, res, next) {
         next();
     })
 
-}
+} */
 
 
 async function run() {
@@ -70,13 +70,13 @@ async function run() {
 
 
         //Created Agency Api
-        app.get('/createAgency', verifyJWT, async (req, res) => {
-            const decoded = req.decoded;
+        app.get('/createAgency', async (req, res) => {
+            /* const decoded = req.decoded;
             console.log('inside create agency api', decoded);
 
             if (decoded.email !== req.query.agencyEmail) {
                 res.status(403).send({ message: 'Forbidden access' })
-            }
+            } */
             let query = {};
             if (req.query.agencyEmail) {
                 query = {
@@ -108,13 +108,13 @@ async function run() {
 }
 
 // JWT Token --------------------
-app.post('/jwt', (req, res) => {
+/* app.post('/jwt', (req, res) => {
     const user = req.body;
     console.log(user);
-    const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '2d' })
+    const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '2 days' })
     res.send({ token })
 
-})
+}) */
 
 
 run().catch((error) => console.log(error))
