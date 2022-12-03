@@ -42,8 +42,23 @@ const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology:
 async function run() {
     try {
         const upcomingToursCollection = client.db('TakeATrip').collection('upcomingTours');
-        const createdAgencyData = client.db('TakeATrip').collection('createdAgency');
+        const createdAgencyCollection = client.db('TakeATrip').collection('createdAgency');
+        const postsCollection = client.db('TakeATrip').collection('posts');
+        const usersCollection = client.db('TakeATrip').collection('users');
 
+        //new post
+        app.post('/posts', async (req, res) => {
+            const newPost = req.body;
+            const result = await postsCollection.insertOne(newPost);
+            res.send(result);
+        });
+
+        //post api
+        app.get('/posts', async (req, res) => {
+            const query = {};
+            const posts = await postsCollection.find(query).sort({time: -1}).toArray();
+            res.send(posts)
+        });
 
         //upcoming tour api for all upcoming data
         app.get('/upcomingTours', async (req, res) => {
@@ -83,21 +98,21 @@ async function run() {
                     agencyEmail: req.query.agencyEmail
                 }
             }
-            const cursor = createdAgencyData.find(query);
+            const cursor = createdAgencyCollection.find(query);
             const createdAgency = await cursor.toArray();
             res.send(createdAgency);
         });
 
         app.post('/createAgency', async (req, res) => {
             const createAgency = req.body;
-            const result = await createdAgencyData.insertOne(createAgency);
+            const result = await createdAgencyCollection.insertOne(createAgency);
             res.send(result);
         });
 
         app.delete('/createAgency/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: ObjectId(id) };
-            const result = await createdAgencyData.deleteOne(query);
+            const result = await createdAgencyCollection.deleteOne(query);
             res.send(result);
         })
     }
