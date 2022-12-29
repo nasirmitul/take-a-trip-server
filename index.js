@@ -19,8 +19,6 @@ const store_id = process.env.SSL_STORE_ID
 const store_passwd = process.env.SSL_SECRET_KEY
 const is_live = false //true for live, false for sandbox
 
-console.log("store info", store_id, store_passwd);
-
 //database connection --------------------
 const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@cluster0.dxgxsmu.mongodb.net/?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
@@ -53,6 +51,22 @@ async function run() {
         const postsCollection = client.db('TakeATrip').collection('posts');
         const usersCollection = client.db('TakeATrip').collection('users');
         const paymentsCollection = client.db('TakeATrip').collection('payments');
+
+        //new user
+        app.post('/users', async (req, res) => {
+            const newUser = req.body;
+
+            const checkUser = await usersCollection.findOne({ email: newUser.email })
+
+            console.log('newUser', newUser);
+            console.log('checkUser', checkUser);
+
+            if (newUser?.email === checkUser?.email) {
+                return;
+            }
+            const result = await usersCollection.insertOne(newUser);
+            res.send(result);
+        });
 
         //new post
         app.post('/posts', async (req, res) => {
@@ -95,7 +109,7 @@ async function run() {
         })
 
         //add remove react
-        app.put('/post_react/:id', async (req, res) => {
+        app.put('/post_react_add/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: ObjectId(id) };
 
@@ -110,20 +124,33 @@ async function run() {
                     reacts_uid: reactInfo.uid
                 }
             }
+
             const result = await postsCollection.updateOne(query, react);
             res.send(result);
         })
 
-        //update react field
-        /* app.put('/post/update_react_field', async (req, res) => {
+        app.put('/post_react_remove/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
 
-            const result = postsCollection.updateMany({}, {
-                $set:
-                    { react_uid: [] }
-            }, false, true)
+            const reactInfo = req.body;
+            console.log(reactInfo);
 
-            res.send(result)
-        }) */
+            const react = {
+                $inc: {
+                    reacts: reactInfo.react
+                },
+                $pull: {
+                    reacts_uid: {
+                        $in: [reactInfo.uid]
+                    }
+                }
+            }
+
+            const result = await postsCollection.updateOne(query, react);
+            res.send(result);
+        })
+
 
         //upcoming tour api for all upcoming data
         app.get('/upcomingTours', async (req, res) => {
@@ -196,7 +223,6 @@ async function run() {
                 ship_country: 'Bangladesh',
             };
 
-
             const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live)
             sslcz.init(data).then(apiResponse => {
                 // Redirect the user to payment gateway
@@ -213,6 +239,8 @@ async function run() {
             });
         })
 
+
+        //payment successful
         app.post('/payment/success', async (req, res) => {
 
             const { transactionId, tourId } = req.query;
@@ -228,7 +256,7 @@ async function run() {
                 })
 
             if (result.modifiedCount > 0) {
-                var updateTravelerNum = tour.leftTravelers+1;
+                var updateTravelerNum = tour.leftTravelers + 1;
 
                 res.redirect(`http://localhost:3000/payment/success?transactionId=${transactionId}`)
             }
@@ -242,8 +270,33 @@ async function run() {
                     }
                 }
             )
-
         })
+
+        //successful order summery api
+        app.get('/payment/success/:id', async (req, res) => {
+            const { id } = req.params;
+
+            const tour = await paymentsCollection.findOne({ transactionId: id })
+
+            res.send(tour)
+        })
+
+
+        //My Tours/Recent events api
+        app.get('/my-tours', async (req, res) => {
+            const { email } = req.query;
+            const query = { userEmail: email }
+
+            const result = await paymentsCollection.find(query).toArray();
+
+            res.send(result);
+
+
+
+            // const posts = await postsCollection.find(query).sort({ time: -1 }).toArray();
+            // res.send(posts)
+        })
+
 
         //view agency profile by user
         app.get('/agencyProfile/:id', async (req, res) => {
@@ -260,6 +313,15 @@ async function run() {
             const posts = await upcomingToursCollection.find(query).toArray();
             res.send(posts)
         });
+
+
+        //view user profile
+        app.get('/user/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email }
+            const user = await usersCollection.findOne(query);
+            res.send(user)
+        })
 
 
         //Created Agency Api
@@ -293,6 +355,16 @@ async function run() {
             const result = await createdAgencyCollection.deleteOne(query);
             res.send(result);
         })
+
+
+
+
+        //Important delete
+        // app.get('/delete-data', async(req, res) => {
+        //     const result = await upcomingToursCollection.deleteMany({details: 't'})
+        //     console.log('result', result);
+        //     res.send(result);
+        // })
     }
 
     finally {
