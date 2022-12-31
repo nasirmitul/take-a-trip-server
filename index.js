@@ -151,6 +151,101 @@ async function run() {
             res.send(result);
         })
 
+        //add and remove followers
+        app.put('/follow/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email }
+
+            const followerInfo = req.body;
+
+            const myEmail = followerInfo.followByEmail;
+            console.log('mm', myEmail);
+            const myFollowQuery = { email: myEmail }
+
+            const meFollowing = {
+                $push: {
+                    following: {
+                        followingEmail: followerInfo.byFollowEmail,
+                        followingName: followerInfo.byFollowName,
+                        followingImage: followerInfo.byFollowImage,
+                        followingTime: followerInfo.followTime
+                    }
+                }
+            }
+
+            const toFollow = {
+                $push: {
+                    followers: followerInfo
+                }
+            }
+
+            const result = await usersCollection.updateOne(query, toFollow)
+
+            const myFollowResult = await usersCollection.updateOne(myFollowQuery, meFollowing)
+
+            res.send(result);
+        })
+
+
+        app.put('/unfollow/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email }
+
+            const followerInfo = req.body;
+
+            const myEmail = followerInfo.followByEmail;
+            const myUnFollowQuery = { email: myEmail }
+
+            const meUnFollowing = {
+                $pull: {
+                    following: {
+                        followingEmail: followerInfo.byFollowEmail
+                    }
+                }
+            }
+
+            const toUnFollow = {
+                $pull: {
+                    followers: {
+                        followByEmail: followerInfo.followByEmail
+                    }
+                }
+            }
+
+            const result = await usersCollection.updateOne(query, toUnFollow)
+
+            const myFollowResult = await usersCollection.updateOne(myUnFollowQuery, meUnFollowing)
+
+            res.send(result);
+        })
+
+
+        //follower api
+        app.get('/follower/:email', async (req, res) => {
+            const email = req.params.email;
+
+            const query = { email: email }
+
+            const follower = await usersCollection.findOne(query)
+
+            console.log(follower.followers);
+
+            res.send(follower.followers)
+        })
+
+        //following api
+        app.get('/following/:email', async (req, res) => {
+            const email = req.params.email;
+
+            const query = { email: email }
+
+            const following = await usersCollection.findOne(query)
+
+            console.log(following.following);
+
+            res.send(following.following)
+        })
+
 
         //upcoming tour api for all upcoming data
         app.get('/upcomingTours', async (req, res) => {
@@ -247,6 +342,16 @@ async function run() {
 
             const tour = await upcomingToursCollection.findOne({ _id: ObjectId(tourId) })
 
+            // console.log('tour data', tour);
+
+
+            const paymentInfo = await paymentsCollection.findOne({ transactionId })
+
+            // console.log('paymentInfo', paymentInfo);
+            const user = await usersCollection.findOne({ email: paymentInfo.userEmail })
+
+            // console.log('user', user);
+
             const result = await paymentsCollection.updateOne({ transactionId },
                 {
                     $set: {
@@ -258,15 +363,27 @@ async function run() {
             if (result.modifiedCount > 0) {
                 var updateTravelerNum = tour.leftTravelers + 1;
 
+                console.log('tour.leftTravelers', tour.leftTravelers);
+                console.log('updateTravelerNum', updateTravelerNum);
+
                 res.redirect(`http://localhost:3000/payment/success?transactionId=${transactionId}`)
             }
 
-            const query = { _id: ObjectId(tourId) };
+            // const query = { _id: ObjectId(tourId) };
 
             const updateTour = await upcomingToursCollection.updateOne({ _id: ObjectId(tourId) },
                 {
                     $set: {
                         leftTravelers: updateTravelerNum
+                    }
+                }
+            )
+
+            const updateUserTours = await usersCollection.updateOne(
+                { email: user.email },
+                {
+                    $push: {
+                        tours: paymentInfo
                     }
                 }
             )
@@ -306,13 +423,39 @@ async function run() {
             res.send(agencyProfile)
         });
 
-        //agency timeline posts
+        //agency timeline posts api
         app.get('/agency/:email', async (req, res) => {
             const email = req.params.email;
             const query = { agencyEmail: email };
             const posts = await upcomingToursCollection.find(query).toArray();
             res.send(posts)
         });
+
+        //agency reviews api
+        app.get('/agency/reviews/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { agencyEmail: email };
+            const review = await createdAgencyCollection.findOne(query);
+            res.send(review.reviews)
+        });
+
+        //add agency ratings
+        app.put('/review/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) }
+
+            const reviewInfo = req.body;
+
+            const review = {
+                $push: {
+                    reviews: reviewInfo
+                }
+            }
+
+            const result = await createdAgencyCollection.updateOne(query, review)
+
+            res.send(result);
+        })
 
 
         //view user profile
@@ -321,6 +464,15 @@ async function run() {
             const query = { email: email }
             const user = await usersCollection.findOne(query);
             res.send(user)
+        })
+
+        //user tours api
+        app.get('/user/tours/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email }
+            const userTours = await usersCollection.findOne(query);
+
+            res.send(userTours.tours)
         })
 
 
@@ -362,6 +514,20 @@ async function run() {
         //Important delete
         // app.get('/delete-data', async(req, res) => {
         //     const result = await upcomingToursCollection.deleteMany({details: 't'})
+        //     console.log('result', result);
+        //     res.send(result);
+        // })
+
+        //Important update
+        // app.get('/update-data', async (req, res) => {
+        //     const result = await usersCollection.updateMany(
+        //         {},
+        //         {
+        //             $set: {
+        //                 tours : []
+        //             }
+        //         }
+        //     )
         //     console.log('result', result);
         //     res.send(result);
         // })
