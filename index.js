@@ -40,7 +40,6 @@ const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology:
         req.decoded = decoded;
         next();
     })
-
 } */
 
 
@@ -51,6 +50,7 @@ async function run() {
         const postsCollection = client.db('TakeATrip').collection('posts');
         const usersCollection = client.db('TakeATrip').collection('users');
         const paymentsCollection = client.db('TakeATrip').collection('payments');
+        const personalizedTourCollection = client.db('TakeATrip').collection('personalizeTour');
 
         //new user
         app.post('/users', async (req, res) => {
@@ -81,6 +81,16 @@ async function run() {
             const posts = await postsCollection.find(query).sort({ time: -1 }).toArray();
             res.send(posts)
         });
+
+        //search results
+        app.get('/search', async (req, res) => {
+            const data = req.query.searchData;
+
+            const query = { name: new RegExp(data, 'i') }
+
+            const searchResult = await usersCollection.find(query).toArray();
+            res.send(searchResult)
+        })
 
         //user timeline posts
         app.get('/posts/:email', async (req, res) => {
@@ -223,13 +233,9 @@ async function run() {
         //follower api
         app.get('/follower/:email', async (req, res) => {
             const email = req.params.email;
-
             const query = { email: email }
 
             const follower = await usersCollection.findOne(query)
-
-            console.log(follower.followers);
-
             res.send(follower.followers)
         })
 
@@ -240,9 +246,6 @@ async function run() {
             const query = { email: email }
 
             const following = await usersCollection.findOne(query)
-
-            console.log(following.following);
-
             res.send(following.following)
         })
 
@@ -254,6 +257,26 @@ async function run() {
             const upComingTourData = await cursor.toArray();
             const count = await upcomingToursCollection.estimatedDocumentCount();
             res.send({ count, upComingTourData });
+        })
+
+        //single upcoming tour api
+        // app.get('/tour-details/:id', async (req, res) => {
+        //     const id = req.params.id;
+        //     const query = {_id : ObjectId(id)}
+        
+        //     const result = await upcomingToursCollection.findOne(query)
+        //     // const cursor = await upcomingToursCollection.find(query).toArray();
+
+        //     res.send(result);
+        // })
+
+        //upcoming tour api for agency email
+        app.get('/upcomingTours/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { agencyEmail: email }
+            const cursor = upcomingToursCollection.find(query);
+            const upComingTourData = await cursor.toArray();
+            res.send(upComingTourData);
         })
 
         //upcoming tour api for right panel api
@@ -272,14 +295,157 @@ async function run() {
         });
 
         //upcoming tour api for single upcoming tour data selected by the user
-        app.get('/upcomingTours/:id', async (req, res) => {
+        app.get('/upcoming-tours/:id', async (req, res) => {
             const id = req.params.id;
+            console.log('id', id);
             const query = { _id: ObjectId(id) };
             const upcomingTour = await upcomingToursCollection.findOne(query);
             res.send(upcomingTour)
         });
 
-        //Payment for tour
+        //personalized tours
+        app.post('/personalized-tours', async (req, res) => {
+
+            const personalizeTour = req.body;
+            const result = await personalizedTourCollection.insertOne(personalizeTour)
+            res.send(result);
+        })
+
+        //personalized tours api for agency
+        app.get('/personalized-tours/agency/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { agencyEmail: email }
+            const result = await personalizedTourCollection.find(query).toArray();
+            res.send(result);
+        })
+
+        //personalized tours api for user
+        app.get('/personalized-tours/user/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email }
+            const result = await personalizedTourCollection.find(query).toArray();
+            res.send(result);
+        })
+
+        //update personalized tours
+        app.put('/personalized-tours/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) }
+            const updatedData = req.body;
+
+            const tourData = {
+                $set: {
+                    status: true,
+                    amount: updatedData.amount
+                }
+            }
+
+            const result = await personalizedTourCollection.updateOne(query, tourData)
+            res.send(result);
+        })
+
+        //cancel personalize tour by user
+        app.delete('/personalized-tours/:id', async(req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id)}
+            const result = await personalizedTourCollection.deleteOne(query)
+            console.log('result', result);
+            res.send(result);
+        })
+
+        //Payment for personalize tour
+        app.post('/payment', async (req, res) => {
+            const order = req.body;
+
+            const orderedTour = await personalizedTourCollection.findOne({ _id: ObjectId(order.tour) })
+
+            const transactionId = new ObjectId().toString()
+
+            const data = {
+                total_amount: orderedTour.amount,
+                currency: 'BDT',
+                tran_id: transactionId, // use unique tran_id for each api call
+                success_url: `http://localhost:5000/payment/success/personalize?transactionId=${transactionId}&tourId=${order.tour}`,
+                fail_url: 'http://localhost:5000/payment/fail',
+                cancel_url: 'http://localhost:5000/payment/cancel',
+                ipn_url: 'http://localhost:3030/ipn',
+                shipping_method: 'N/A',
+                product_name: order.locationName,
+                product_category: 'Tour',
+                product_profile: 'Tour',
+                cus_name: order.username,
+                cus_email: order.userEmail,
+                cus_add1: order.address,
+                cus_add2: 'Dhaka',
+                cus_city: 'Dhaka',
+                cus_state: 'Dhaka',
+                cus_postcode: '1000',
+                cus_country: 'Bangladesh',
+                cus_phone: order.phone_number,
+                cus_fax: '0171111111',
+                ship_name: order.username,
+                ship_add1: 'Dhaka',
+                ship_add2: 'Dhaka',
+                ship_city: 'Dhaka',
+                ship_state: 'Dhaka',
+                ship_postcode: 1000,
+                ship_country: 'Bangladesh',
+            };
+
+
+            const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live)
+            sslcz.init(data).then(apiResponse => {
+                // Redirect the user to payment gateway
+                let GatewayPageURL = apiResponse.GatewayPageURL
+
+                paymentsCollection.insertOne({
+                    ...order,
+                    price: orderedTour.amount,
+                    transactionId,
+                    currency: 'BDT',
+                    paid: false
+                });
+                return res.send({ url: GatewayPageURL });
+            });
+        })
+
+
+        //payment successful for personalize tour
+        app.post('/payment/success/personalize', async (req, res) => {
+
+            const { transactionId, tourId } = req.query;
+
+            const tour = await upcomingToursCollection.findOne({ _id: ObjectId(tourId) })
+
+
+
+            const paymentInfo = await paymentsCollection.findOne({ transactionId })
+
+
+            const result = await paymentsCollection.updateOne({ transactionId },
+                {
+                    $set: {
+                        paid: true,
+                        paidAt: new Date()
+                    }
+                })
+
+            if (result.modifiedCount > 0) {
+                res.redirect(`http://localhost:3000/payment/success?transactionId=${transactionId}`)
+            }
+
+            const updateTour = await personalizedTourCollection.updateOne({ _id: ObjectId(tourId) },
+                {
+                    $set: {
+                        payment: true
+                    }
+                }
+            )
+        })
+
+
+
+        //Payment for upcoming tour
         app.post('/payment', async (req, res) => {
             const order = req.body;
 
@@ -335,7 +501,7 @@ async function run() {
         })
 
 
-        //payment successful
+        //payment successful for upcoming tour
         app.post('/payment/success', async (req, res) => {
 
             const { transactionId, tourId } = req.query;
@@ -457,7 +623,6 @@ async function run() {
             res.send(result);
         })
 
-
         //view user profile
         app.get('/user/:email', async (req, res) => {
             const email = req.params.email;
@@ -480,11 +645,11 @@ async function run() {
         app.get('/createAgency', async (req, res) => {
             /* const decoded = req.decoded;
             console.log('inside create agency api', decoded);
-
             if (decoded.email !== req.query.agencyEmail) {
                 res.status(403).send({ message: 'Forbidden access' })
             } */
             let query = {};
+
             if (req.query.agencyEmail) {
                 query = {
                     agencyEmail: req.query.agencyEmail
@@ -513,18 +678,18 @@ async function run() {
 
         //Important delete
         // app.get('/delete-data', async(req, res) => {
-        //     const result = await upcomingToursCollection.deleteMany({details: 't'})
+        //     const result = await createdAgencyCollection.deleteMany({personalizedTours:[]})
         //     console.log('result', result);
         //     res.send(result);
         // })
 
         //Important update
         // app.get('/update-data', async (req, res) => {
-        //     const result = await usersCollection.updateMany(
+        //     const result = await createdAgencyCollection.updateMany(
         //         {},
         //         {
         //             $set: {
-        //                 tours : []
+        //                 personalizedTours : []
         //             }
         //         }
         //     )
