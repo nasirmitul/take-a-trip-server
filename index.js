@@ -51,6 +51,7 @@ async function run() {
         const usersCollection = client.db('TakeATrip').collection('users');
         const paymentsCollection = client.db('TakeATrip').collection('payments');
         const personalizedTourCollection = client.db('TakeATrip').collection('personalizeTour');
+        const postReportsCollection = client.db('TakeATrip').collection('postReports');
 
         //new user
         app.post('/users', async (req, res) => {
@@ -68,6 +69,14 @@ async function run() {
             res.send(result);
         });
 
+        //check user role
+        app.get('/users/admin/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email }
+            const user = await usersCollection.findOne(query)
+            res.send({ isAdmin: user?.role === 'admin' });
+        })
+
         //new post
         app.post('/posts', async (req, res) => {
             const newPost = req.body;
@@ -75,10 +84,42 @@ async function run() {
             res.send(result);
         });
 
+        //post report
+        app.post('/post-report', async (req, res) => {
+            const report = req.body;
+
+            const post = await postReportsCollection.findOne({ reportedId: report.reportedId })
+
+            if (post) {
+                const updateReport = {
+                    $inc: {
+                        reportCount: 1
+                    }
+                }
+
+                const result = await postReportsCollection.updateOne(post, updateReport);
+                res.send(result);
+            }
+
+            else {
+                const result = await postReportsCollection.insertOne(report)
+                res.send(result);
+            }
+
+        })
+
         //posts api
         app.get('/posts', async (req, res) => {
             const query = {};
             const posts = await postsCollection.find(query).sort({ time: -1 }).toArray();
+            res.send(posts)
+        });
+
+        //delete post
+        app.delete('/posts/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+            const posts = await postsCollection.deleteOne(query)
             res.send(posts)
         });
 
@@ -138,6 +179,24 @@ async function run() {
             const result = await postsCollection.updateOne(query, react);
             res.send(result);
         })
+
+
+        app.put('/update-time/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+
+            const time = req.body;
+            console.log(time);
+
+            const completed = {
+                $set: {
+                    timesUp: time.timesUp
+                }
+            }
+            const result = await postsCollection.updateOne(query, completed);
+            res.send(result);
+        })
+
 
         app.put('/post_react_remove/:id', async (req, res) => {
             const id = req.params.id;
@@ -229,6 +288,65 @@ async function run() {
             res.send(result);
         })
 
+        //add profile bio
+        app.put('/addbio/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email }
+
+            console.log(query);
+
+            const data = req.body;
+
+            console.log(data);
+            const bio = {
+                $set: {
+                    bio: data.bio
+                }
+            }
+            console.log(bio);
+
+
+            const result = await usersCollection.updateOne(query, bio);
+
+            res.send(result);
+
+        })
+
+
+        //add profile bio
+        app.put('/addsocial/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email }
+
+            console.log(query);
+
+            const data = req.body;
+
+            console.log(data);
+            const bio = {
+                $set: {
+                    facebook: data.facebook,
+                    instagram: data.instagram,
+                    twitter: data.twitter
+                }
+            }
+            console.log(bio);
+
+            const result = await usersCollection.updateOne(query, bio);
+
+            res.send(result);
+
+        })
+
+
+        //profile about
+        app.get('/user-profile/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email }
+
+            const about = await usersCollection.findOne(query)
+            res.send(about)
+        })
 
         //follower api
         app.get('/follower/:email', async (req, res) => {
@@ -263,7 +381,7 @@ async function run() {
         // app.get('/tour-details/:id', async (req, res) => {
         //     const id = req.params.id;
         //     const query = {_id : ObjectId(id)}
-        
+
         //     const result = await upcomingToursCollection.findOne(query)
         //     // const cursor = await upcomingToursCollection.find(query).toArray();
 
@@ -283,7 +401,7 @@ async function run() {
         app.get('/rightUpcomingTours', async (req, res) => {
             const query = {}
             const cursor = upcomingToursCollection.find(query);
-            const upComingTourData = await cursor.limit(3).toArray();
+            const upComingTourData = await cursor.limit(3).sort({ time: -1 }).toArray();
             const count = await upcomingToursCollection.estimatedDocumentCount();
             res.send({ count, upComingTourData });
         })
@@ -345,16 +463,16 @@ async function run() {
         })
 
         //cancel personalize tour by user
-        app.delete('/personalized-tours/:id', async(req, res) => {
+        app.delete('/personalized-tours/:id', async (req, res) => {
             const id = req.params.id;
-            const query = { _id: ObjectId(id)}
+            const query = { _id: ObjectId(id) }
             const result = await personalizedTourCollection.deleteOne(query)
             console.log('result', result);
             res.send(result);
         })
 
         //Payment for personalize tour
-        app.post('/payment', async (req, res) => {
+        app.post('/payment/personalize', async (req, res) => {
             const order = req.body;
 
             const orderedTour = await personalizedTourCollection.findOne({ _id: ObjectId(order.tour) })
@@ -581,6 +699,53 @@ async function run() {
         })
 
 
+        //all agency for admin
+        app.get('/all-agency', async (req, res) => {
+            const query = { verified: false };
+            const agencies = await createdAgencyCollection.find(query).toArray();
+            res.send(agencies)
+        });
+
+        //all report for admin
+        app.get('/all-reports', async (req, res) => {
+            const query = {};
+            const reports = await postReportsCollection.find(query).toArray();
+            res.send(reports)
+        });
+
+
+        //approve agency by admin
+        app.put('/approve-agency/:id', async (req, res) => {
+            const id = req.params.id;
+
+            const query = { _id: ObjectId(id) };
+
+            const agency = {
+                $set: {
+                    verified: true
+                }
+            }
+            const approve = await createdAgencyCollection.updateOne(query, agency);
+            res.send(approve)
+        });
+
+        //delete agency by admin
+        app.delete('/delete-agency/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) }
+
+            const result = await createdAgencyCollection.deleteOne(query)
+            res.send(result);
+        })
+
+        //delete agencyPost
+        app.delete('/agency-post/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+            const posts = await upcomingToursCollection.deleteOne(query)
+            res.send(posts)
+        });
+
         //view agency profile by user
         app.get('/agencyProfile/:id', async (req, res) => {
             const id = req.params.id;
@@ -589,11 +754,36 @@ async function run() {
             res.send(agencyProfile)
         });
 
+        //agency api
+        app.get('/agency-info/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { agencyEmail: email };
+            const agencyProfile = await createdAgencyCollection.findOne(query);
+            res.send(agencyProfile)
+        });
+
+        //agency about details
+        app.get('/agency-details/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { agencyEmail: email };
+            const agency = await createdAgencyCollection.find(query).toArray();
+            res.send(agency)
+        });
+
+
         //agency timeline posts api
         app.get('/agency/:email', async (req, res) => {
             const email = req.params.email;
             const query = { agencyEmail: email };
             const posts = await upcomingToursCollection.find(query).toArray();
+            res.send(posts)
+        });
+
+        //agency income history
+        app.get('/agency-revenue/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { agencyEmail: email };
+            const posts = await paymentsCollection.find(query).toArray();
             res.send(posts)
         });
 
@@ -648,7 +838,7 @@ async function run() {
             if (decoded.email !== req.query.agencyEmail) {
                 res.status(403).send({ message: 'Forbidden access' })
             } */
-            let query = {};
+            let query = { verified: true }
 
             if (req.query.agencyEmail) {
                 query = {
@@ -666,9 +856,9 @@ async function run() {
             res.send(result);
         });
 
-        app.delete('/createAgency/:id', async (req, res) => {
-            const id = req.params.id;
-            const query = { _id: ObjectId(id) };
+        app.delete('/deleteAgency/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { agencyEmail: email };
             const result = await createdAgencyCollection.deleteOne(query);
             res.send(result);
         })
@@ -677,11 +867,11 @@ async function run() {
 
 
         //Important delete
-        // app.get('/delete-data', async(req, res) => {
-        //     const result = await createdAgencyCollection.deleteMany({personalizedTours:[]})
-        //     console.log('result', result);
-        //     res.send(result);
-        // })
+        app.get('/delete-data', async (req, res) => {
+            const result = await paymentsCollection.deleteMany({ locationName: 'demra' })
+            console.log('result', result);
+            res.send(result);
+        })
 
         //Important update
         // app.get('/update-data', async (req, res) => {
