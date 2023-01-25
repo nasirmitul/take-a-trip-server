@@ -52,6 +52,7 @@ async function run() {
         const paymentsCollection = client.db('TakeATrip').collection('payments');
         const personalizedTourCollection = client.db('TakeATrip').collection('personalizeTour');
         const postReportsCollection = client.db('TakeATrip').collection('postReports');
+        const requestTourCollection = client.db('TakeATrip').collection('requestTour');
 
         //new user
         app.post('/users', async (req, res) => {
@@ -421,9 +422,109 @@ async function run() {
             res.send(upcomingTour)
         });
 
+        //request tour
+        app.post('/request-tour', async (req, res) => {
+            const personalizeTour = req.body;
+            const result = await requestTourCollection.insertOne(personalizeTour)
+            res.send(result);
+        })
+
+        //requested tour by user
+        app.get('/requested-tour/:email', async (req, res) => {
+            const email = req.params.email;
+
+            const query = {
+                $and: [
+                    { email: email },
+                    { timesUp: false }
+                ]
+            }
+
+            // const query = { email: email }
+
+            const result = await requestTourCollection.find(query).toArray()
+
+            res.send(result);
+        })
+
+        //cancel bid request
+        app.delete('/bid-tour/:id', async (req, res) => {
+            const id = req.params.id;
+
+            const query = { _id: ObjectId(id) };
+            const result = await requestTourCollection.deleteOne(query)
+            res.send(result);
+        })
+
+        //accept bid by user
+        app.put('/approve-bid/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) }
+
+            const data = req.body;
+
+            const updateTime = {
+                $set: {
+                    timesUp: data.timesUp
+                }
+            }
+
+            const accepted = {
+                $set: {
+                    accepted: data.bid
+                }
+            }
+            const bid = await requestTourCollection.updateOne(query, accepted)
+            const result = await requestTourCollection.updateOne(query, updateTime)
+
+            res.send(result);
+
+        })
+
+        //all accepted tour by user
+        app.get('/accepted-tour/:email', async (req, res) => {
+            const email = req.params.email;
+
+            const query = {
+                $and: [
+                    { email: email },
+                    { timesUp: true }
+                ]
+            }
+
+            const result = await requestTourCollection.find(query).toArray();
+            res.send(result);
+
+        })
+
+        //all requested tours
+        app.get('/bid-tour', async (req, res) => {
+            const query = { timesUp: false }
+            const result = await requestTourCollection.find(query).toArray()
+            res.send(result);
+        })
+
+        //bid by agency
+        app.patch('/bid-tour/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) }
+
+            const bidData = req.body;
+            console.log(bidData);
+
+            const newBid = {
+                $push: {
+                    allBids: bidData
+                }
+            }
+
+            const result = await requestTourCollection.updateOne(query, newBid);
+            res.send(result);
+        })
+
+
         //personalized tours
         app.post('/personalized-tours', async (req, res) => {
-
             const personalizeTour = req.body;
             const result = await personalizedTourCollection.insertOne(personalizeTour)
             res.send(result);
@@ -483,9 +584,9 @@ async function run() {
                 total_amount: orderedTour.amount,
                 currency: 'BDT',
                 tran_id: transactionId, // use unique tran_id for each api call
-                success_url: `http://localhost:5000/payment/success/personalize?transactionId=${transactionId}&tourId=${order.tour}`,
-                fail_url: 'http://localhost:5000/payment/fail',
-                cancel_url: 'http://localhost:5000/payment/cancel',
+                success_url: `https://take-a-trip-server-sigma.vercel.app/payment/success/personalize?transactionId=${transactionId}&tourId=${order.tour}`,
+                fail_url: 'https://take-a-trip-server-sigma.vercel.app/payment/fail',
+                cancel_url: 'https://take-a-trip-server-sigma.vercel.app/payment/cancel',
                 ipn_url: 'http://localhost:3030/ipn',
                 shipping_method: 'N/A',
                 product_name: order.locationName,
@@ -549,7 +650,7 @@ async function run() {
                 })
 
             if (result.modifiedCount > 0) {
-                res.redirect(`http://localhost:3000/payment/success?transactionId=${transactionId}`)
+                res.redirect(`https://take-a-trip-01.web.app/payment/success?transactionId=${transactionId}`)
             }
 
             const updateTour = await personalizedTourCollection.updateOne({ _id: ObjectId(tourId) },
@@ -575,9 +676,9 @@ async function run() {
                 total_amount: orderedTour.totalCost,
                 currency: 'BDT',
                 tran_id: transactionId, // use unique tran_id for each api call
-                success_url: `http://localhost:5000/payment/success?transactionId=${transactionId}&tourId=${order.tour}`,
-                fail_url: 'http://localhost:5000/payment/fail',
-                cancel_url: 'http://localhost:5000/payment/cancel',
+                success_url: `https://take-a-trip-server-sigma.vercel.app/payment/success?transactionId=${transactionId}&tourId=${order.tour}`,
+                fail_url: 'https://take-a-trip-server-sigma.vercel.app/payment/fail',
+                cancel_url: 'https://take-a-trip-server-sigma.vercel.app/payment/cancel',
                 ipn_url: 'http://localhost:3030/ipn',
                 shipping_method: 'N/A',
                 product_name: order.locationName,
@@ -650,7 +751,7 @@ async function run() {
                 console.log('tour.leftTravelers', tour.leftTravelers);
                 console.log('updateTravelerNum', updateTravelerNum);
 
-                res.redirect(`http://localhost:3000/payment/success?transactionId=${transactionId}`)
+                res.redirect(`https://take-a-trip-01.web.app/payment/success?transactionId=${transactionId}`)
             }
 
             // const query = { _id: ObjectId(tourId) };
@@ -865,10 +966,29 @@ async function run() {
 
 
 
+        //multiple query data
+        app.get('/test/:email/:cost/:day', async (req, res) => {
+
+            const email = req.params.email;
+            const cost = req.params.cost;
+            const day = req.params.day;
+
+            console.log(`/test/${email}/${cost}`);
+            const query = {
+                $and: [
+                    { agencyEmail: email },
+                    { totalCost: cost },
+                    { tourTripDay: day }
+                ]
+            }
+            const result = await upcomingToursCollection.find(query).toArray();
+            res.send(result);
+        })
+
 
         //Important delete
         app.get('/delete-data', async (req, res) => {
-            const result = await paymentsCollection.deleteMany({ locationName: 'demra' })
+            const result = await paymentsCollection.deleteMany({})
             console.log('result', result);
             res.send(result);
         })
